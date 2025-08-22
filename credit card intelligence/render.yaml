@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: credit-intelligence-backend
+    env: python
+    rootDir: backend
+    buildCommand: |
+      pip install --upgrade pip
+      PIP_ONLY_BINARY=:all: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: LOG_LEVEL
+        value: INFO
+      - key: POSTGRES_SERVER
+        sync: false
+      - key: POSTGRES_USER
+        sync: false
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: POSTGRES_DB
+        sync: false
+      - key: POSTGRES_PORT
+        value: 5432
+      - key: MONGODB_URL
+        sync: false
+      - key: MONGODB_DB
+        value: credit_intelligence
