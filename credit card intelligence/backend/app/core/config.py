@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Credit Intelligence Platform"
     
     # CORS
-    ALLOWED_HOSTS: List[str] = ["http://localhost:3000", "http://localhost:3001"]
+    ALLOWED_HOSTS: List[str] = ["http://localhost:3000", "http://localhost:3001","https://credit-ar3rtnnp2-priyaingle456-gmailcoms-projects.vercel.app"]
     
     # Database
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
@@ -27,9 +27,8 @@ class Settings(BaseSettings):
     
     # External APIs
     YAHOO_FINANCE_API_KEY: Optional[str] = os.getenv("YAHOO_FINANCE_API_KEY", "f92934a223msh40fc62e4cdaa414p1ee507jsn0a5728a6dd30")
-    NEWS_API_KEY: str = os.getenv("NEWS_API_KEY", "894690e075494683a4bbc7b7fc52456a")
-    NEWS_API_BASE_URL: str = "https://newsapi.org/v2"
-    # World Bank API is free and doesn't require an API key
+    NEWS_API_KEY: Optional[str] = os.getenv("NEWS_API_KEY", "894690e075494683a4bbc7b7fc52456a")
+    WORLD_BANK_API_KEY: Optional[str] = os.getenv("WORLD_BANK_API_KEY")
     
     # ML Model
     MODEL_PATH: str = os.getenv("MODEL_PATH", "ml/models/credit_model.pkl")
