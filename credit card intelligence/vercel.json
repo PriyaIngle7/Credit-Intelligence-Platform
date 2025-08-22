@@ -1,5 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://RENDER_BACKEND_URL/api/$1" }
+    { "source": "/api/(.*)", "destination": "https://credit-intelligence-platform-4.onrender.com/api/$1" }
   ]
-} 
+}
