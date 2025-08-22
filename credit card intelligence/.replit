@@ -1,0 +1,24 @@
+language = "python3"
+run = "cd backend && python run.py"
+entrypoint = "backend/run.py"
+
+[nix]
+channel = "stable-23_11"
+
+[env]
+PYTHONPATH = "${REPL_HOME}/backend"
+
+[packager]
+language = "python3"
+ignoredPackages = ["unit_tests"]
+
+[packager.features]
+packageSearch = true
+guessImports = true
+
+[languages.python3]
+pattern = "**/*.py"
+syntax = "python"
+
+[languages.python3.languageServer]
+start = ["pylsp"] 

@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     
     # External APIs
     YAHOO_FINANCE_API_KEY: Optional[str] = os.getenv("YAHOO_FINANCE_API_KEY", "f92934a223msh40fc62e4cdaa414p1ee507jsn0a5728a6dd30")
-    NEWS_API_KEY: Optional[str] = os.getenv("NEWS_API_KEY", "894690e075494683a4bbc7b7fc52456a")
+    NEWS_API_KEY: str = os.getenv("NEWS_API_KEY", "894690e075494683a4bbc7b7fc52456a")
+    NEWS_API_BASE_URL: str = "https://newsapi.org/v2"
     # World Bank API is free and doesn't require an API key
     
     # ML Model

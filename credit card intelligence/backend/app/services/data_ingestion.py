@@ -34,65 +34,35 @@ class DataIngestionService:
             
             # Get basic info
             info = stock.info
+            hist = stock.history(period="1y")
             
-            # Get financial statements
-            balance_sheet = stock.balance_sheet
-            income_stmt = stock.income_stmt
-            cash_flow = stock.cashflow
+            if hist.empty:
+                logger.warning(f"No historical data found for {ticker}")
+                return {}
             
-            # Get latest data
-            latest_balance = balance_sheet.iloc[:, 0] if not balance_sheet.empty else pd.Series()
-            latest_income = income_stmt.iloc[:, 0] if not income_stmt.empty else pd.Series()
-            latest_cashflow = cash_flow.iloc[:, 0] if not cash_flow.empty else pd.Series()
+            # Calculate key metrics
+            latest_price = hist['Close'].iloc[-1]
+            price_change = hist['Close'].iloc[-1] - hist['Close'].iloc[-2] if len(hist) > 1 else 0
+            price_change_pct = (price_change / hist['Close'].iloc[-2]) * 100 if len(hist) > 1 else 0
             
-            # Calculate ratios
-            total_assets = latest_balance.get('Total Assets', 0)
-            total_liabilities = latest_balance.get('Total Liabilities Net Minority Interest', 0)
-            total_equity = latest_balance.get('Total Equity Gross Minority Interest', 0)
-            current_assets = latest_balance.get('Current Assets', 0)
-            current_liabilities = latest_balance.get('Current Liabilities', 0)
-            long_term_debt = latest_balance.get('Long Term Debt', 0)
-            short_term_debt = latest_balance.get('Short Term Debt', 0)
-            cash = latest_balance.get('Cash and Cash Equivalents', 0)
-            
-            net_income = latest_income.get('Net Income', 0)
-            ebitda = latest_income.get('EBITDA', 0)
-            operating_cash_flow = latest_cashflow.get('Operating Cash Flow', 0)
-            
-            # Calculate ratios
-            debt_to_equity = (long_term_debt + short_term_debt) / total_equity if total_equity else 0
-            current_ratio = current_assets / current_liabilities if current_liabilities else 0
-            quick_ratio = (current_assets - latest_balance.get('Inventory', 0)) / current_liabilities if current_liabilities else 0
-            cash_ratio = cash / current_liabilities if current_liabilities else 0
-            debt_to_ebitda = (long_term_debt + short_term_debt) / ebitda if ebitda else 0
-            roe = net_income / total_equity if total_equity else 0
-            roa = net_income / total_assets if total_assets else 0
+            # Get financial ratios
+            market_cap = info.get('marketCap', 0)
+            pe_ratio = info.get('trailingPE', 0)
+            debt_to_equity = info.get('debtToEquity', 0)
+            current_ratio = info.get('currentRatio', 0)
             
             return {
-                'total_assets': float(total_assets),
-                'total_liabilities': float(total_liabilities),
-                'total_equity': float(total_equity),
-                'current_assets': float(current_assets),
-                'current_liabilities': float(current_liabilities),
-                'long_term_debt': float(long_term_debt),
-                'short_term_debt': float(short_term_debt),
-                'cash_and_equivalents': float(cash),
-                'net_income': float(net_income),
-                'ebitda': float(ebitda),
-                'operating_cash_flow': float(operating_cash_flow),
-                'debt_to_equity_ratio': float(debt_to_equity),
-                'current_ratio': float(current_ratio),
-                'quick_ratio': float(quick_ratio),
-                'cash_ratio': float(cash_ratio),
-                'debt_to_ebitda': float(debt_to_ebitda),
-                'roe': float(roe),
-                'roa': float(roa),
-                'stock_price': float(info.get('currentPrice', 0)),
-                'market_cap': float(info.get('marketCap', 0)),
-                'enterprise_value': float(info.get('enterpriseValue', 0)),
-                'pe_ratio': float(info.get('trailingPE', 0)),
-                'pb_ratio': float(info.get('priceToBook', 0)),
-                'ev_to_ebitda': float(info.get('enterpriseToEbitda', 0)),
+                'ticker': ticker,
+                'price': latest_price,
+                'price_change': price_change,
+                'price_change_pct': price_change_pct,
+                'market_cap': market_cap,
+                'pe_ratio': pe_ratio,
+                'debt_to_equity': debt_to_equity,
+                'current_ratio': current_ratio,
+                'volume': hist['Volume'].iloc[-1],
+                'high_52w': hist['High'].max(),
+                'low_52w': hist['Low'].min(),
                 'data_date': datetime.now(),
                 'source': 'yahoo_finance'
             }
@@ -108,7 +78,27 @@ class DataIngestionService:
                 logger.warning("News API key not configured")
                 return []
             
-            url = "https://newsapi.org/v2/everything"
+            # First try to get company-specific news
+            company_news = await self._fetch_company_news(company_name, ticker)
+            
+            # Then get general financial news that might affect the company
+            general_news = await self._fetch_general_financial_news()
+            
+            # Combine and deduplicate
+            all_news = company_news + general_news
+            unique_news = self._deduplicate_news(all_news)
+            
+            logger.info(f"Fetched {len(unique_news)} news articles for {ticker}")
+            return unique_news
+            
+        except Exception as e:
+            logger.error(f"Error fetching news data: {e}")
+            return []
+    
+    async def _fetch_company_news(self, company_name: str, ticker: str) -> List[Dict[str, Any]]:
+        """Fetch company-specific news"""
+        try:
+            url = f"{settings.NEWS_API_BASE_URL}/everything"
             params = {
                 'q': f'"{company_name}" OR "{ticker}"',
                 'language': 'en',
@@ -132,7 +122,8 @@ class DataIngestionService:
                                 'source': article.get('source', {}).get('name', 'news_api'),
                                 'published_at': datetime.fromisoformat(article.get('publishedAt', '').replace('Z', '+00:00')),
                                 'company_name': company_name,
-                                'company_ticker': ticker
+                                'company_ticker': ticker,
+                                'news_type': 'company_specific'
                             }
                             news_data.append(news_item)
                         
@@ -144,92 +135,232 @@ class DataIngestionService:
             return []
             
         except Exception as e:
-            logger.error(f"Error fetching news data: {e}")
+            logger.error(f"Error fetching company news: {e}")
             return []
     
-    async def fetch_world_bank_data(self, country_code: str = "US") -> Dict[str, Any]:
-        """Fetch economic indicators from World Bank API"""
+    async def _fetch_general_financial_news(self) -> List[Dict[str, Any]]:
+        """Fetch general financial news that might affect credit markets"""
         try:
-            # World Bank API endpoint for GDP growth
-            url = f"http://api.worldbank.org/v2/country/{country_code}/indicator/NY.GDP.MKTP.KD.ZG"
+            url = f"{settings.NEWS_API_BASE_URL}/top-headlines"
             params = {
-                'format': 'json',
-                'per_page': 5
+                'country': 'us',
+                'category': 'business',
+                'pageSize': 30,
+                'apiKey': settings.NEWS_API_KEY
             }
             
             if self.session:
                 async with self.session.get(url, params=params) as response:
                     if response.status == 200:
                         data = await response.json()
+                        articles = data.get('articles', [])
                         
-                        if len(data) > 1 and data[1]:
-                            latest_data = data[1][0]
-                            return {
-                                'gdp_growth': float(latest_data.get('value', 0)),
-                                'year': int(latest_data.get('date', 2023)),
-                                'country_code': country_code
-                            }
+                        news_data = []
+                        for article in articles:
+                            # Check if article is relevant to credit/financial markets
+                            if self._is_financial_relevant(article):
+                                news_item = {
+                                    'title': article.get('title', ''),
+                                    'content': article.get('content', ''),
+                                    'url': article.get('url', ''),
+                                    'source': article.get('source', {}).get('name', 'news_api'),
+                                    'published_at': datetime.fromisoformat(article.get('publishedAt', '').replace('Z', '+00:00')),
+                                    'company_name': 'general',
+                                    'company_ticker': 'MARKET',
+                                    'news_type': 'general_financial'
+                                }
+                                news_data.append(news_item)
+                        
+                        return news_data
+                    else:
+                        logger.error(f"News API top-headlines error: {response.status}")
+                        return []
             
-            return {}
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error fetching general financial news: {e}")
+            return []
+    
+    def _is_financial_relevant(self, article: Dict[str, Any]) -> bool:
+        """Check if a news article is relevant to credit/financial markets"""
+        relevant_keywords = [
+            'credit', 'debt', 'bond', 'interest rate', 'federal reserve', 'fed',
+            'inflation', 'recession', 'economic', 'financial', 'banking',
+            'default', 'bankruptcy', 'restructuring', 'liquidity', 'risk',
+            'market', 'trading', 'investment', 'portfolio', 'asset'
+        ]
+        
+        title = article.get('title', '').lower()
+        content = article.get('content', '').lower()
+        
+        for keyword in relevant_keywords:
+            if keyword in title or keyword in content:
+                return True
+        
+        return False
+    
+    def _deduplicate_news(self, news_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Remove duplicate news articles based on title similarity"""
+        seen_titles = set()
+        unique_news = []
+        
+        for news in news_list:
+            # Simple deduplication based on title
+            title_key = news['title'].lower().strip()
+            if title_key not in seen_titles:
+                seen_titles.add(title_key)
+                unique_news.append(news)
+        
+        return unique_news
+    
+    async def fetch_world_bank_data(self, country_code: str = "US") -> Dict[str, Any]:
+        """Fetch economic indicators from World Bank API"""
+        try:
+            # World Bank API endpoints for key economic indicators
+            indicators = {
+                'GDP': 'NY.GDP.MKTP.CD',  # GDP (current US$)
+                'INFLATION': 'FP.CPI.TOTL.ZG',  # Inflation, consumer prices (annual %)
+                'INTEREST_RATE': 'FR.INR.RINR',  # Real interest rate (%)
+                'UNEMPLOYMENT': 'SL.UEM.TOTL.ZS',  # Unemployment, total (% of total labor force)
+                'DEBT': 'GC.DOD.TOTL.GD.ZS'  # Central government debt, total (% of GDP)
+            }
+            
+            world_bank_data = {}
+            
+            for indicator_name, indicator_code in indicators.items():
+                try:
+                    url = f"http://api.worldbank.org/v2/country/{country_code}/indicator/{indicator_code}"
+                    params = {
+                        'format': 'json',
+                        'per_page': 1,
+                        'date': datetime.now().year
+                    }
+                    
+                    if self.session:
+                        async with self.session.get(url, params=params) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                if len(data) > 1 and data[1]:
+                                    value = data[1][0].get('value')
+                                    if value is not None:
+                                        world_bank_data[indicator_name.lower()] = value
+                    
+                    # Small delay to avoid overwhelming the API
+                    await asyncio.sleep(0.1)
+                    
+                except Exception as e:
+                    logger.warning(f"Error fetching {indicator_name}: {e}")
+                    continue
+            
+            return {
+                'country_code': country_code,
+                'data_date': datetime.now(),
+                'indicators': world_bank_data,
+                'source': 'world_bank'
+            }
             
         except Exception as e:
             logger.error(f"Error fetching World Bank data: {e}")
             return {}
     
-    async def ingest_company_data(self, ticker: str, db) -> bool:
-        """Ingest all data for a company"""
+    async def ingest_company_data(self, ticker: str, db) -> Dict[str, Any]:
+        """Ingest all data for a specific company"""
         try:
-            # Check if company exists
+            # Get company info from database
             company = db.query(Company).filter(Company.ticker == ticker).first()
             if not company:
-                logger.error(f"Company {ticker} not found in database")
-                return False
+                raise ValueError(f"Company {ticker} not found in database")
+            
+            logger.info(f"Starting data ingestion for {ticker}")
             
             # Fetch financial data
             financial_data = await self.fetch_yahoo_finance_data(ticker)
-            if financial_data:
-                # Save financial data
-                db_financial = FinancialData(
-                    company_id=company.id,
-                    **financial_data
-                )
-                db.add(db_financial)
-                db.commit()
-                logger.info(f"Financial data ingested for {ticker}")
             
             # Fetch news data
             news_data = await self.fetch_news_data(company.name, ticker)
+            
+            # Fetch economic indicators
+            economic_data = await self.fetch_world_bank_data()
+            
+            # Save financial data to PostgreSQL
+            if financial_data:
+                financial_record = FinancialData(
+                    company_id=company.id,
+                    data_date=financial_data['data_date'],
+                    price=financial_data['price'],
+                    market_cap=financial_data['market_cap'],
+                    pe_ratio=financial_data['pe_ratio'],
+                    debt_to_equity=financial_data['debt_to_equity'],
+                    current_ratio=financial_data['current_ratio'],
+                    volume=financial_data['volume'],
+                    source=financial_data['source']
+                )
+                db.add(financial_record)
+                db.commit()
+                logger.info(f"Saved financial data for {ticker}")
+            
+            # Save news data to MongoDB
             if news_data:
-                # Save news data to MongoDB
                 from app.core.database import get_mongodb_sync
                 mongodb = get_mongodb_sync()
                 news_collection = mongodb.news_data
                 
                 for news_item in news_data:
-                    news_doc = NewsData(**news_item)
-                    news_collection.insert_one(news_doc.dict())
+                    # Add sentiment analysis
+                    sentiment_score, sentiment_label = self._analyze_sentiment(news_item['title'] + ' ' + news_item['content'])
+                    
+                    news_record = {
+                        'company_ticker': news_item['company_ticker'],
+                        'company_name': news_item['company_name'],
+                        'title': news_item['title'],
+                        'content': news_item['content'],
+                        'url': news_item['url'],
+                        'source': news_item['source'],
+                        'published_at': news_item['published_at'],
+                        'news_type': news_item['news_type'],
+                        'sentiment_score': sentiment_score,
+                        'sentiment_label': sentiment_label,
+                        'confidence': 0.8,
+                        'collected_at': datetime.utcnow()
+                    }
+                    
+                    news_collection.insert_one(news_record)
                 
-                logger.info(f"News data ingested for {ticker}: {len(news_data)} articles")
+                logger.info(f"Saved {len(news_data)} news articles for {ticker}")
             
-            return True
+            return {
+                'ticker': ticker,
+                'financial_data': bool(financial_data),
+                'news_data': len(news_data),
+                'economic_data': bool(economic_data),
+                'status': 'success'
+            }
             
         except Exception as e:
             logger.error(f"Error ingesting data for {ticker}: {e}")
-            return False
+            return {
+                'ticker': ticker,
+                'status': 'error',
+                'error': str(e)
+            }
     
-    async def batch_ingest_data(self, tickers: List[str], db) -> Dict[str, bool]:
-        """Ingest data for multiple companies"""
-        results = {}
-        
-        async with self:
-            tasks = [self.ingest_company_data(ticker, db) for ticker in tickers]
-            results_list = await asyncio.gather(*tasks, return_exceptions=True)
+    def _analyze_sentiment(self, text: str) -> tuple[float, str]:
+        """Simple sentiment analysis using TextBlob"""
+        try:
+            from textblob import TextBlob
+            blob = TextBlob(text)
+            sentiment_score = blob.sentiment.polarity
             
-            for ticker, result in zip(tickers, results_list):
-                if isinstance(result, Exception):
-                    logger.error(f"Error ingesting data for {ticker}: {result}")
-                    results[ticker] = False
-                else:
-                    results[ticker] = result
-        
-        return results 
+            if sentiment_score > 0.1:
+                sentiment_label = 'positive'
+            elif sentiment_score < -0.1:
+                sentiment_label = 'negative'
+            else:
+                sentiment_label = 'neutral'
+            
+            return sentiment_score, sentiment_label
+            
+        except Exception as e:
+            logger.warning(f"Error in sentiment analysis: {e}")
+            return 0.0, 'neutral' 
