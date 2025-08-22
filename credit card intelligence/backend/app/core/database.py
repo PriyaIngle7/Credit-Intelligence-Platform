@@ -38,8 +38,7 @@ async def init_db():
             "maxPoolSize": 10,
             "retryWrites": True,
             "retryReads": True,
-            "ssl": True,
-            "ssl_cert_reqs": "CERT_NONE"  # For development - use proper certs in production
+            "tlsAllowInvalidCertificates": True  # For development - use proper certs in production
         }
         
         # Initialize MongoDB async client
