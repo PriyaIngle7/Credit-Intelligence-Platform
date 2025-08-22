@@ -345,6 +345,40 @@ class DataIngestionService:
                 'error': str(e)
             }
     
+    async def batch_ingest_data(self, tickers: List[str], db) -> Dict[str, Any]:
+        """Ingest data for multiple companies"""
+        try:
+            results = []
+            for ticker in tickers:
+                try:
+                    result = await self.ingest_company_data(ticker, db)
+                    results.append(result)
+                    # Small delay between companies to avoid overwhelming APIs
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    logger.error(f"Error ingesting data for {ticker}: {e}")
+                    results.append({
+                        'ticker': ticker,
+                        'status': 'error',
+                        'error': str(e)
+                    })
+            
+            return {
+                'total_companies': len(tickers),
+                'successful': len([r for r in results if r['status'] == 'success']),
+                'failed': len([r for r in results if r['status'] == 'error']),
+                'results': results
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in batch data ingestion: {e}")
+            return {
+                'total_companies': len(tickers),
+                'successful': 0,
+                'failed': len(tickers),
+                'error': str(e)
+            }
+    
     def _analyze_sentiment(self, text: str) -> tuple[float, str]:
         """Simple sentiment analysis using TextBlob"""
         try:

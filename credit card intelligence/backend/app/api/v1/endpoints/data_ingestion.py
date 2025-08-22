@@ -141,9 +141,10 @@ async def ingest_company_data_task(ticker: str, db: Session):
     try:
         ingestion_service = DataIngestionService()
         async with ingestion_service:
-            await ingestion_service.ingest_company_data(ticker, db)
+            result = await ingestion_service.ingest_company_data(ticker, db)
+            logger.info(f"Data ingestion completed for {ticker}: {result}")
     except Exception as e:
-        print(f"Error ingesting data for {ticker}: {e}")
+        logger.error(f"Error ingesting data for {ticker}: {e}")
 
 
 async def batch_ingest_data_task(tickers: List[str], db: Session):
@@ -151,6 +152,7 @@ async def batch_ingest_data_task(tickers: List[str], db: Session):
     try:
         ingestion_service = DataIngestionService()
         async with ingestion_service:
-            await ingestion_service.batch_ingest_data(tickers, db)
+            result = await ingestion_service.batch_ingest_data(tickers, db)
+            logger.info(f"Batch data ingestion completed: {result}")
     except Exception as e:
-        print(f"Error in batch data ingestion: {e}") 
+        logger.error(f"Error in batch data ingestion: {e}") 
