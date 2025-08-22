@@ -94,7 +94,7 @@ async def ingest_all_companies_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/status/{ticker}")
+@router.post("/status/{ticker}")
 async def get_ingestion_status(
     ticker: str,
     db: Session = Depends(get_db)
