@@ -14,12 +14,12 @@ class Settings(BaseSettings):
     # Database
     POSTGRES_SERVER: str = os.getenv("POSTGRES_SERVER", "localhost")
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
-    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "password")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "123")
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "credit_intelligence")
     POSTGRES_PORT: str = os.getenv("POSTGRES_PORT", "5432")
     
     # MongoDB
-    MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb+srv://priyaingle456:CLcRSTcllzOzrEpg@creditintelligence.hk0sndt.mongodb.net/")
     MONGODB_DB: str = os.getenv("MONGODB_DB", "credit_intelligence")
     
     # Redis
